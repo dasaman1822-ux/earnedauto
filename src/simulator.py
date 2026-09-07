@@ -3,6 +3,7 @@ from collections import Counter
 import random
 import matplotlib.pyplot as plt
 
+
 @dataclass
 class Incident:
     incident_id: str
@@ -37,6 +38,15 @@ INCIDENT_TYPES = [
 ]
 
 
+INCIDENT_WEIGHTS = [
+    0.5235,
+    0.1831,
+    0.0930,
+    0.0177,
+    0.1827,
+]
+
+
 MACHINE_CLASSES = [
     "compute_node",
     "storage_node",
@@ -45,7 +55,12 @@ MACHINE_CLASSES = [
 
 
 def generate_incident():
-    incident_type = random.choice(INCIDENT_TYPES)
+    incident_type = random.choices(
+        INCIDENT_TYPES,
+        weights=INCIDENT_WEIGHTS,
+        k=1,
+    )[0]
+
     machine_class = random.choice(MACHINE_CLASSES)
 
     return Incident(
@@ -77,6 +92,7 @@ if __name__ == "__main__":
     )
 
     print(incident_counts)
+    print(incidents[:5])
 
     plt.bar(
         incident_counts.keys(),
@@ -88,5 +104,6 @@ if __name__ == "__main__":
     plt.title("Simulated Incident Distribution")
     plt.xticks(rotation=30)
     plt.tight_layout()
+
     plt.savefig("results/incident_distribution.png")
     plt.show()
