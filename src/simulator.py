@@ -57,7 +57,14 @@ def generate_incident():
 
 
 def generate_incidents(count=1000):
-    return [generate_incident() for _ in range(count)]
+    incidents = []
+
+    for i in range(count):
+        incident = generate_incident()
+        incident.incident_id = f"INC-{i + 1:06d}"
+        incidents.append(incident)
+
+    return incidents
 
 
 if __name__ == "__main__":
