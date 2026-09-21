@@ -12,22 +12,6 @@ class Incident:
     timestamp: str
 
 
-@dataclass
-class Action:
-    action_type: str
-    reversibility: float
-    blast_radius: float
-
-
-ACTIONS = [
-    Action("restart_service", 0.9, 0.1),
-    Action("requeue_job", 0.9, 0.1),
-    Action("reset_driver", 0.6, 0.3),
-    Action("drain_node", 0.5, 0.7),
-    Action("reclaim_disk", 0.3, 0.5),
-    Action("escalate", 1.0, 0.0),
-]
-
 
 INCIDENT_TYPES = [
     "kernel_error",
