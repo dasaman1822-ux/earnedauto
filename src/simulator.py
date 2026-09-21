@@ -10,7 +10,13 @@ class Incident:
     incident_type: str
     machine_class: str
     timestamp: str
-
+class OutcomeType:
+    RESOLVED = "resolved"
+    RECURRED = "recurred"
+    HARMFUL = "harmful"
+@dataclass
+class Outcome:
+    outcome_type: str
 
 
 INCIDENT_TYPES = [
@@ -38,6 +44,7 @@ MACHINE_CLASSES = [
 ]
 
 
+
 def generate_incident():
     incident_type = random.choices(
         INCIDENT_TYPES,
@@ -55,6 +62,16 @@ def generate_incident():
     )
 
 
+def generate_outcome():
+    outcome_type = random.choice(
+        [
+            OutcomeType.RESOLVED,
+            OutcomeType.RECURRED,
+            OutcomeType.HARMFUL,
+        ]
+    )
+
+    return Outcome(outcome_type=outcome_type)
 def generate_incidents(count=1000):
     incidents = []
 
@@ -64,7 +81,6 @@ def generate_incidents(count=1000):
         incidents.append(incident)
 
     return incidents
-
 
 if __name__ == "__main__":
     incidents = generate_incidents(1000)
