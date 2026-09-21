@@ -2,9 +2,9 @@
 
 ## 1. Dataset Selection
 
-The Blue Gene/L (BGL) public log dataset was selected to understand the distribution of infrastructure alerts.
+The Blue Gene/L (BGL) public log dataset was selected to analyze the distribution of infrastructure alerts.
 
-The dataset provides a large collection of labelled infrastructure log records. It is used to inform the incident distribution used by the simulator.
+The dataset provides a large collection of labelled infrastructure log records and is used to inform the incident distribution implemented by the simulator.
 
 The project does not use the dataset to train a machine-learning failure detector.
 
@@ -20,7 +20,7 @@ The simulator uses five broad incident types:
 - `communication_failure`
 - `application_error`
 
-A small number of broad categories was chosen for the initial simulator so that the Week 1 implementation remains simple and understandable.
+A small set of broad categories was selected for the initial simulator to keep the Week 1 implementation simple, interpretable, and manageable.
 
 More detailed incident subtypes can be introduced later if they are required to model different remediation outcomes.
 
@@ -34,27 +34,27 @@ The simulator currently represents three machine classes:
 - `storage_node`
 - `scheduler`
 
-Machine class is included in the incident representation because remediation evidence should eventually depend on the context in which an action is used.
+Machine class is included in the incident representation because remediation evidence should depend on the context in which an action is used.
 
 ---
 
 ## 4. Incident Distribution
 
-The simulator uses different probabilities for the five incident types instead of assigning them equal probabilities.
+The simulator uses different probabilities for the five incident types rather than assigning them equal probabilities.
 
-The probabilities are informed by the alert distribution observed in the BGL analysis.
+These probabilities are informed by the alert distribution observed during the BGL analysis.
 
-These probabilities are simulation assumptions and are not treated as exact ground-truth mappings from BGL labels to the simulator's incident categories.
+The probabilities are simulation assumptions and are not treated as exact ground-truth mappings between BGL labels and the simulator's incident categories.
 
 ---
 
 ## 5. Incident Simulator
 
-A simulator is used because this project does not operate a real infrastructure cluster.
+A simulator is used because the project does not operate a real infrastructure cluster.
 
-The simulator provides controlled incidents that can later be used to evaluate the trust gate under repeatable conditions.
+The simulator provides controlled incidents that can be used to evaluate the trust gate under repeatable conditions.
 
-The simulator is intended to represent realistic incident patterns without attempting to reproduce the complete BGL dataset.
+The simulator is intended to represent simplified incident patterns without attempting to reproduce the complete BGL dataset.
 
 ---
 
@@ -67,6 +67,8 @@ INC-000001
 INC-000002
 INC-000003
 ```
+
+Sequential identifiers make individual simulated incidents easier to distinguish and trace during testing and evaluation.
 
 ---
 
@@ -84,7 +86,7 @@ The initial simulator therefore focuses on generating incidents and their distri
 
 The technical paper is being written in Markdown.
 
-Markdown was selected because the project guide permits either LaTeX or plain Markdown and recommends choosing one format during Week 1 and keeping it throughout the project.
+Markdown was selected because the project guide permits either LaTeX or plain Markdown and recommends selecting one format during Week 1 and maintaining that format throughout the project.
 
 ---
 
@@ -109,7 +111,7 @@ The simulator defines six remediation actions:
 5. Reclaim disk space by deleting temporary files
 6. Escalate to a human
 
-Each action has initial reversibility and blast-radius values that will later be used by the trust gate.
+Each action has initial reversibility and blast-radius values that will be used by the trust gate.
 
 ---
 
@@ -117,6 +119,8 @@ Each action has initial reversibility and blast-radius values that will later be
 
 SciPy was added to the project because the Week 2 gate requires a lower percentile of the Beta posterior.
 
-The implementation uses `scipy.stats.beta.ppf()` to calculate this posterior percentile directly. This avoids implementing a numerical inverse-CDF algorithm for the Beta distribution ourselves and keeps the evidence calculation concise and readable.
+The implementation uses `scipy.stats.beta.ppf()` to calculate this posterior percentile directly.
 
-SciPy is therefore used specifically for the Beta posterior lower confidence-bound calculation in `src/evidence.py`.
+This avoids implementing a numerical inverse-CDF algorithm for the Beta distribution and keeps the evidence calculation concise and readable.
+
+SciPy is therefore used specifically for the Beta posterior lower-bound calculation in `src/evidence.py`.
