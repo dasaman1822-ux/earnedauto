@@ -1,0 +1,515 @@
+\documentclass[conference]{IEEEtran}
+
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{url}
+\usepackage{array}
+
+\title{Earned Autonomy: A Reversibility and Evidence Gate for Automated Infrastructure Remediation}
+
+\author{
+\IEEEauthorblockN{Aman Das}
+\IEEEauthorblockA{
+Earned Autonomy Project\\
+Remote, India
+}
+}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Automated remediation can reduce the time required to recover from infrastructure
+failures, but unrestricted automation can also execute harmful actions when the
+correct remediation is uncertain. This project presents Earned Autonomy, a trust
+gate positioned between failure detection and remediation execution. The gate
+determines whether a candidate remediation should be automatically executed,
+proposed for human approval, or escalated to a human operator. The decision is
+based on three factors: action reversibility, blast radius, and accumulated
+evidence of successful outcomes. Evidence is represented using a Beta posterior,
+with a conservative lower posterior percentile used instead of the posterior
+mean. This design allows autonomy to be earned through repeated successful
+outcomes while retaining safety constraints for actions with larger blast
+radius or lower reversibility. A public Blue Gene/L (BGL) system log dataset is
+used to derive the shape of incident distributions, while a controlled
+simulator is used for reproducible experimentation and later benchmarking.
+The current implementation establishes the incident simulator, configurable
+action and threshold definitions, Bayesian evidence tracking, the trust-gate
+decision logic, and safety tests. Further evaluation will compare the gate with
+always-ask and always-act baselines using automatic resolution rate, mean time
+to recovery, human interruptions, and unsafe automatic executions.
+\end{abstract}
+
+\begin{IEEEkeywords}
+automated remediation, self-healing infrastructure, trust gate, Bayesian
+evidence, infrastructure automation, reversibility, blast radius
+\end{IEEEkeywords}
+
+\section{Introduction}
+
+Modern infrastructure systems increasingly use automation to detect failures
+and initiate remediation actions. Automation can reduce recovery time and
+decrease the operational workload placed on human engineers. However, an
+automation system that executes every proposed action without considering
+context can also turn an uncertain diagnosis into an unsafe infrastructure
+change.
+
+The central problem addressed by this project is therefore not failure
+detection itself, but the decision of whether an already proposed remediation
+action has earned sufficient trust to execute automatically.
+
+Earned Autonomy introduces a decision layer between a failure detector and an
+action executor. Instead of treating automation as a binary property, the
+system provides three possible decisions: \textit{AUTO}, \textit{PROPOSE}, and
+\textit{ESCALATE}. An action can initially require human involvement and later
+become eligible for automatic execution as successful evidence accumulates.
+
+The design is intentionally based on three factors. Reversibility represents
+how easily an action can be undone. Blast radius represents the potential
+scope of impact if an action is incorrect. Accumulated evidence represents
+historical observations of whether a particular action has successfully
+resolved incidents in a particular machine-class context.
+
+The project prioritizes limiting unsafe automatic executions rather than
+maximizing the number of actions executed automatically. The final evaluation
+will determine whether this approach provides useful automation while
+maintaining this safety objective.
+
+\section{Problem Statement}
+
+A conventional automated remediation workflow can be represented as:
+
+\begin{equation}
+\text{Failure Detection}
+\rightarrow
+\text{Candidate Action}
+\rightarrow
+\text{Action Execution}
+\end{equation}
+
+The missing component is a trust decision between the candidate action and its
+execution.
+
+An action that is appropriate in one context may not be appropriate in
+another. For example, restarting a stateless service may have a relatively
+small and reversible impact, whereas reclaiming disk space by deleting
+temporary files can have a larger consequence if the action is applied
+incorrectly.
+
+Earned Autonomy therefore treats the remediation decision as a function of
+action properties, environmental risk, and observed historical evidence.
+
+\section{Project Scope}
+
+The project implements a Python-based trust gate for automated infrastructure
+remediation.
+
+The gate is responsible for:
+
+\begin{itemize}
+    \item evaluating candidate remediation actions;
+    \item combining reversibility, blast radius, and evidence;
+    \item maintaining evidence separately for action type and machine class;
+    \item producing AUTO, PROPOSE, or ESCALATE decisions;
+    \item providing configurable decision thresholds; and
+    \item supporting reproducible simulation and benchmarking.
+\end{itemize}
+
+The project does not implement a failure detector, infrastructure executor,
+monitoring dashboard, or machine-learning failure prediction model.
+
+The simulator is used to provide reproducible incidents and, in later stages,
+ground truth for determining whether an action was safe or successful.
+
+\section{Dataset Analysis}
+
+\subsection{Blue Gene/L Dataset}
+
+The Blue Gene/L (BGL) system log dataset was selected as the public log source
+for the project. The dataset provides labelled system log records and is used
+to derive the approximate distribution of incident types for the simulator.
+
+The project does not attempt to build a complete log parser. Instead, the
+analysis extracts the label information required to understand the shape of
+the incident distribution.
+
+The local dataset analysis produced the following statistics:
+
+\begin{table}[htbp]
+\centering
+\caption{BGL Dataset Statistics}
+\label{tab:bgl_stats}
+\begin{tabular}{lr}
+\toprule
+Property & Value \\
+\midrule
+Total records & 4,747,963 \\
+Normal records & 4,399,503 \\
+Alert records & 348,460 \\
+Alert percentage & 7.34\% \\
+Distinct labels & 42 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The most frequent labels included KERNDTLB, KERNSTOR, APPSEV, KERNMNTF, and
+KERNTERM. These observations were used to define the broad incident taxonomy
+for the simulator rather than attempting to reproduce every individual log
+template.
+
+\subsection{Incident Taxonomy}
+
+Five broad incident categories are currently represented:
+
+\begin{itemize}
+    \item \texttt{kernel\_error}
+    \item \texttt{storage\_error}
+    \item \texttt{filesystem\_failure}
+    \item \texttt{communication\_failure}
+    \item \texttt{application\_error}
+\end{itemize}
+
+These categories provide a manageable representation of the public dataset
+for simulation.
+
+\section{Incident and Action Modeling}
+
+The simulator represents an incident using a small data structure containing
+an incident identifier, incident type, machine class, and timestamp.
+
+Three machine classes are currently represented:
+
+\begin{itemize}
+    \item \texttt{compute\_node}
+    \item \texttt{storage\_node}
+    \item \texttt{scheduler}
+\end{itemize}
+
+The project models six remediation actions:
+
+\begin{table}[htbp]
+\centering
+\caption{Remediation Actions}
+\label{tab:actions}
+\begin{tabular}{p{0.43\columnwidth}cc}
+\toprule
+Action & Reversibility & Blast Radius \\
+\midrule
+Restart service & 0.9 & 0.1 \\
+Requeue job & 0.9 & 0.1 \\
+Reset driver & 0.6 & 0.3 \\
+Drain node & 0.5 & 0.7 \\
+Reclaim disk & 0.3 & 0.5 \\
+Escalate & 1.0 & 0.0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The values are normalized to the range $[0,1]$. Higher reversibility represents
+an action that is easier to undo. Higher blast radius represents a potentially
+larger impact if the action is incorrect.
+
+\section{Simulator}
+
+The simulator produces incidents according to the distribution observed from
+the BGL dataset.
+
+The current incident distribution uses the following weights:
+
+\begin{table}[htbp]
+\centering
+\caption{Simulator Incident Distribution}
+\label{tab:incident_distribution}
+\begin{tabular}{lc}
+\toprule
+Incident Type & Weight \\
+\midrule
+Kernel error & 0.5235 \\
+Storage error & 0.1831 \\
+Filesystem failure & 0.0930 \\
+Communication failure & 0.0177 \\
+Application error & 0.1827 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The simulator currently generates incidents without outcome modeling. This
+matches the Week 1 scope. Outcome behavior will be added in the subsequent
+stage so that the benchmark can determine whether an action actually resolved
+an incident.
+
+The simulator was used to generate 1,000 incidents and produce an incident
+distribution plot.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\columnwidth]{figures/incident_distribution.png}
+\caption{Simulated incident distribution generated from the BGL-informed
+distribution.}
+\label{fig:incident_distribution}
+\end{figure}
+
+\section{Earned Autonomy Trust Gate}
+
+\subsection{Design Overview}
+
+The trust gate combines three factors:
+
+\begin{enumerate}
+    \item reversibility;
+    \item blast radius; and
+    \item accumulated evidence.
+\end{enumerate}
+
+The resulting decision is one of:
+
+\begin{itemize}
+    \item \textbf{AUTO}: the action may be executed automatically;
+    \item \textbf{PROPOSE}: the action may be proposed to a human operator; or
+    \item \textbf{ESCALATE}: human intervention is required.
+\end{itemize}
+
+\subsection{Bayesian Evidence}
+
+Evidence for an action is represented using a Beta posterior.
+
+The initial prior is:
+
+\begin{equation}
+Beta(1,1)
+\end{equation}
+
+A successful outcome increments $\alpha$, while a failed outcome increments
+$\beta$:
+
+\begin{equation}
+\alpha' = \alpha + 1
+\end{equation}
+
+\begin{equation}
+\beta' = \beta + 1
+\end{equation}
+
+Evidence is maintained separately for each combination of action type and
+machine class. This prevents successful outcomes for one context from being
+treated as evidence for every other context.
+
+Rather than using the posterior mean as the evidence score, the gate uses a
+conservative lower posterior percentile:
+
+\begin{equation}
+E_L = Beta^{-1}(0.05;\alpha,\beta)
+\end{equation}
+
+where $E_L$ represents the lower evidence bound used by the trust calculation.
+
+The implementation uses SciPy's Beta distribution percent-point function to
+calculate this value directly.
+
+\subsection{Trust and Risk}
+
+The trust score is calculated as:
+
+\begin{equation}
+Trust = Reversibility \times E_L
+\end{equation}
+
+The normalized blast radius is used as the risk score:
+
+\begin{equation}
+Risk = BlastRadius
+\end{equation}
+
+The decision rule is:
+
+\begin{equation}
+\text{AUTO}
+\quad\text{if}\quad
+Trust > T_A
+\land
+Risk < R_C
+\land
+History = True
+\end{equation}
+
+Otherwise:
+
+\begin{equation}
+\text{PROPOSE}
+\quad\text{if}\quad
+Trust > T_P
+\end{equation}
+
+and:
+
+\begin{equation}
+\text{ESCALATE}
+\quad\text{otherwise}
+\end{equation}
+
+where $T_A$ is the automatic-execution threshold, $T_P$ is the proposal
+threshold, and $R_C$ is the risk ceiling.
+
+\subsection{Configuration}
+
+The current configuration uses:
+
+\begin{table}[htbp]
+\centering
+\caption{Current Trust Gate Thresholds}
+\label{tab:thresholds}
+\begin{tabular}{lc}
+\toprule
+Parameter & Value \\
+\midrule
+AUTO threshold & 0.65 \\
+PROPOSE threshold & 0.35 \\
+Risk ceiling & 0.60 \\
+Evidence percentile & 0.05 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+These threshold values are current engineering configuration choices. They are
+not treated as experimentally optimal values. A threshold sweep is planned
+for the later evaluation stage.
+
+\section{Implementation}
+
+The trust gate is implemented as a small Python component.
+
+The primary implementation is divided into two modules. The evidence module
+contains the Beta evidence model and evidence store. The gate module loads
+configuration, validates the configured factors and thresholds, calculates
+trust and risk, and returns a structured gate result.
+
+The action configuration is stored in YAML so that action properties can be
+changed without modifying the gate implementation.
+
+Similarly, the decision thresholds are stored separately from the gate logic.
+
+This separation allows the implementation to remain small and makes the
+configuration explicit and reproducible.
+
+\section{Week 2 Verification}
+
+The Week 2 implementation includes safety tests for the trust gate.
+
+The first safety condition is that an action with no observed history must
+never receive an AUTO decision. This prevents the system from treating the
+initial Beta prior as sufficient evidence for automatic execution.
+
+The second condition is that an action with a high blast radius must not
+receive an AUTO decision, even after accumulating successful outcomes.
+
+Additional tests verify that the gate can produce all three relevant
+decisions under appropriate conditions.
+
+The automated test suite currently reports:
+
+\begin{equation}
+5\ tests\ passed
+\end{equation}
+
+The Week 2 implementation was also connected to the 1,000-incident simulator
+for an end-to-end check.
+
+Because the current Week 2 simulator does not yet model remediation outcomes,
+the evidence store starts without historical observations. Consequently, the
+current 1,000-incident run produces:
+
+\begin{table}[htbp]
+\centering
+\caption{Week 2 End-to-End Decision Check}
+\label{tab:week2_check}
+\begin{tabular}{lr}
+\toprule
+Decision & Count \\
+\midrule
+AUTO & 0 \\
+PROPOSE & 0 \\
+ESCALATE & 1,000 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+This result is expected at this stage because no remediation outcomes have
+been recorded. It is not treated as a final evaluation of the trust gate.
+
+\section{Project Progress}
+
+During Week 1, the repository and project structure were established, the BGL
+dataset was analyzed, the incident and action data structures were defined,
+and the simulator was implemented. The simulator was used to generate 1,000
+incidents and produce a distribution plot.
+
+During Week 2, the three trust factors were implemented, Beta evidence tracking
+was added, action and threshold configuration was externalized to YAML, and
+the AUTO, PROPOSE, and ESCALATE decision logic was implemented.
+
+The implementation was verified using automated tests and a 1,000-incident
+end-to-end check.
+
+\section{Next Stage}
+
+The next stage of the project will introduce outcome modeling into the
+simulator. The simulator must distinguish between actions that correctly
+resolve an incident, actions that appear to work but fail to address the
+underlying problem, and actions that cause harmful outcomes.
+
+This outcome model will provide the ground truth required for the evidence
+store to learn from remediation results.
+
+The resulting system will then be used to demonstrate how an action can move
+from ESCALATE to PROPOSE and eventually to AUTO as successful evidence
+accumulates.
+
+The project will subsequently compare Earned Autonomy with baseline strategies
+including always-ask and always-act.
+
+The planned evaluation metrics are:
+
+\begin{itemize}
+    \item automatic resolution rate;
+    \item mean time to recovery;
+    \item human interruptions; and
+    \item unsafe automatic executions.
+\end{itemize}
+
+A threshold sweep will also be performed to examine the relationship between
+automation and safety.
+
+\section{Conclusion}
+
+Earned Autonomy provides a trust-gating approach for automated infrastructure
+remediation. Instead of assuming that a remediation action is always safe or
+always requires human approval, the system evaluates whether the action has
+earned the right to execute automatically.
+
+The current implementation establishes the core mechanism using reversibility,
+blast radius, and conservative Bayesian evidence. It also establishes a
+reproducible simulator and safety tests for the first version of the gate.
+
+The remaining evaluation will determine how this design performs against
+simple automation baselines and whether accumulated evidence can increase
+useful autonomy without producing an unacceptable number of unsafe automatic
+executions.
+
+\begin{thebibliography}{00}
+
+\bibitem{bgl}
+A. Oliner and J. Stearley,
+``What supercomputers say: A study of five system logs,''
+in \textit{2007 IEEE 37th Annual International Conference on Dependable
+Systems and Networks}, 2007.
+
+\bibitem{scipy}
+P. Virtanen et al.,
+``SciPy 1.0: Fundamental algorithms for scientific computing in Python,''
+\textit{Nature Methods}, vol. 17, pp. 261--272, 2020.
+
+\end{thebibliography}
+
+\end{document}
