@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from collections import Counter
 import random
 import matplotlib.pyplot as plt
-
+from src.evidence import EvidenceStore  
 
 @dataclass
 class Incident:
@@ -44,7 +44,6 @@ MACHINE_CLASSES = [
 ]
 
 
-
 def generate_incident():
     incident_type = random.choices(
         INCIDENT_TYPES,
@@ -62,16 +61,57 @@ def generate_incident():
     )
 
 
-def generate_outcome():
-    outcome_type = random.choice(
+def generate_outcome(action_type):
+    outcome_probabilities = {
+        "restart_service": (0.80, 0.15, 0.05),
+        "requeue_job": (0.45, 0.35, 0.20),
+        "reset_driver": (0.60, 0.25, 0.15),
+        "drain_node": (0.50, 0.25, 0.25),
+        "reclaim_disk": (0.40, 0.30, 0.30),
+    }
+
+    resolved_probability, recurred_probability, harmful_probability = (
+        outcome_probabilities[action_type]
+    )
+
+    outcome_type = random.choices(
         [
             OutcomeType.RESOLVED,
             OutcomeType.RECURRED,
             OutcomeType.HARMFUL,
-        ]
-    )
+        ],
+        weights=[
+            resolved_probability,
+            recurred_probability,
+            harmful_probability,
+        ],
+        k=1,
+    )[0]
 
     return Outcome(outcome_type=outcome_type)
+
+
+def apply_outcome_to_evidence(
+    outcome,
+    action_type,
+    machine_class,
+    evidence_store,
+):
+    if outcome.outcome_type == OutcomeType.RESOLVED:
+        evidence_store.record_success(
+            action_type,
+            machine_class,
+        )
+
+    elif outcome.outcome_type in (
+        OutcomeType.RECURRED,
+        OutcomeType.HARMFUL,
+    ):
+        evidence_store.record_failure(
+            action_type,
+            machine_class,
+        )
+
 def generate_incidents(count=1000):
     incidents = []
 
@@ -80,7 +120,7 @@ def generate_incidents(count=1000):
         incident.incident_id = f"INC-{i + 1:06d}"
         incidents.append(incident)
 
-    return incidents
+    return incidents                    
 
 if __name__ == "__main__":
     incidents = generate_incidents(1000)
