@@ -1,70 +1,134 @@
 # Validation Report
 
-This bundle was validated in an isolated reconstruction of the current EarnedAutonomy architecture based on the project source available in the conversation.
+This report records verification performed on the repository state audited on 2026-10-07.
 
-## Verified
+## Project Guide Audit Status
 
-- pytest: 5 passed
-- benchmark seed 42 executed twice
-- complete structured JSON outputs were byte-identical
-- threshold sweep executed for valid AUTO/PROPOSE threshold pairs
-- seed 43 benchmark executed
-- seed 43 threshold sweep executed
-- Week 5 automation-vs-unsafe chart generated
+The implementation was compared against the Project Guide requirements for:
 
-## Important boundary
+- repository structure and reproducibility;
+- three-factor trust gate;
+- Bayesian evidence and context separation;
+- six remediation actions;
+- simulator and outcome model;
+- benchmark baselines and four metrics;
+- deterministic execution;
+- threshold sensitivity;
+- paper structure, results, limitations, and references;
+- decision logging and documentation.
 
-The user's live Windows repository at `C:\Users\KIIT0001\earnedauto` was not directly mounted or connected to this session. Therefore this bundle is **validated code and generated results from an isolated reconstruction**, not a claim that the live repository was modified, committed, or pushed.
+## Verified Commands
 
-Before treating the project as complete, the bundle must be applied to the actual repository and the same commands rerun there.
+### Test suite
 
-## Seed 42 benchmark
+```text
+python -m pytest -q
+```
 
-Always ask:
-- automation rate: 0.000
-- automatic resolution rate: 0.000
-- mean time to recovery: 291.685 s
-- human interruptions: 1000
-- unsafe automatic executions: 0
+Result:
 
-Always act:
-- automation rate: 1.000
-- automatic resolution rate: 0.528
-- mean time to recovery: 171.685 s
-- human interruptions: 472
-- unsafe automatic executions: 472
+```text
+11 passed
+```
 
-EarnedAutonomy:
-- automation rate: 0.002
-- automatic resolution rate: 0.000
-- mean time to recovery: 443.905 s
-- human interruptions: 1000
-- unsafe automatic executions: 2
+### Deterministic benchmark
 
-Unsafe automatic execution rate for EarnedAutonomy at the default threshold was 1.000 in seed 42 because both autonomous executions were unsafe. This is an important negative result and is not hidden.
+```text
+python benchmark.py --seed 42 --incidents 1000
+```
 
-## Seed 43 benchmark
+The command was executed twice. The two seed-42 JSON result files were byte-identical.
 
-EarnedAutonomy:
-- automation rate: 0.011
-- automatic resolution rate: 0.011
-- mean time to recovery: 442.320 s
-- human interruptions: 989
-- unsafe automatic executions: 0
+### Second benchmark seed
 
-The qualitative conclusion remains: EarnedAutonomy is far less autonomous than always-act but produces dramatically fewer unsafe automatic executions.
+```text
+python benchmark.py --seed 43 --incidents 1000
+```
 
-## Week 5
+Executed successfully.
 
-At seed 42 and PROPOSE_THRESHOLD=0.35:
-- AUTO 0.50: automation 3.7%, unsafe executions 9
-- AUTO 0.55: automation 2.5%, unsafe executions 7
-- AUTO 0.60: automation 1.1%, unsafe executions 4
-- AUTO 0.65: automation 0.2%, unsafe executions 2
-- AUTO >= 0.70: no autonomous executions in this run
+### Evidence accumulation
 
-This is a real trade-off in the simulator: permissive AUTO thresholds increase automation but also increase unsafe autonomous actions.
+```text
+python run_learning_experiment.py
+```
 
-## Scientific limitation
+Executed successfully.
 
-The current BGL dataset informs incident-type frequency, not remediation ground truth. The benchmark therefore uses an explicit deterministic incident-to-action simulation mapping and fixed action outcome probabilities. The results demonstrate behavior of the implemented simulated gate; they do not establish production remediation effectiveness.
+Observed results:
+
+- `restart_service`: 3 ESCALATE, 23 PROPOSE, 74 AUTO; first AUTO at incident 10.
+- `drain_node`: 100 ESCALATE, 0 PROPOSE, 0 AUTO.
+
+### Threshold sweeps
+
+```text
+python threshold_sweep.py --seed 42 --incidents 1000
+python threshold_sweep.py --seed 43 --incidents 1000
+```
+
+Both executed successfully. Each sweep evaluated 69 valid threshold combinations.
+
+### Paper compilation
+
+The LaTeX paper was compiled twice with `pdflatex`.
+
+Result:
+
+- compilation successful;
+- 8-page PDF generated;
+- no undefined-reference or compilation warning remained after the second pass.
+
+## Benchmark Results
+
+### Seed 42
+
+| Metric | Always Ask | Always Act | EarnedAutonomy |
+|---|---:|---:|---:|
+| Automatic resolution rate | 0.000 | 0.528 | 0.000 |
+| Mean time to recovery | 291.685 s | 171.685 s | 443.905 s |
+| Human interruptions | 1000 | 472 | 1000 |
+| Unsafe automatic executions | 0 | 472 | 2 |
+
+### Seed 43
+
+| Metric | Always Ask | Always Act | EarnedAutonomy |
+|---|---:|---:|---:|
+| Automatic resolution rate | 0.000 | 0.538 | 0.011 |
+| Mean time to recovery | 288.300 s | 168.300 s | 442.320 s |
+| Human interruptions | 1000 | 462 | 989 |
+| Unsafe automatic executions | 0 | 462 | 0 |
+
+## Threshold Sensitivity
+
+At PROPOSE threshold 0.35 for seed 42:
+
+| AUTO threshold | Automation | Unsafe automatic executions |
+|---:|---:|---:|
+| 0.50 | 3.7% | 9 |
+| 0.55 | 2.5% | 7 |
+| 0.60 | 1.1% | 4 |
+| 0.65 | 0.2% | 2 |
+| 0.70 | 0.0% | 0 |
+
+The second seed preserves the same qualitative automation--safety trade-off.
+
+## Paper Figures
+
+The paper contains four generated figures:
+
+```text
+paper/figures/incident_distribution.png
+paper/figures/auto_decision_progression.png
+paper/figures/automation_vs_unsafe_execution_seed42.png
+paper/figures/automation_vs_unsafe_execution_seed43.png
+```
+
+## Important Scientific Boundary
+
+BGL provides incident-log frequency information, not remediation ground truth.
+The benchmark therefore uses an explicit simulated incident-to-action mapping and fixed action outcome probabilities. The results demonstrate behavior of the implemented simulated gate and are not presented as production remediation effectiveness.
+
+## Remaining External Deliverable
+
+The Project Guide's final hand-over gate also requires a five-minute screen capture walking through one run. This cannot be generated from the repository audit itself and must be recorded and sent to the mentor separately.

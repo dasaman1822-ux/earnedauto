@@ -315,12 +315,85 @@ A recurrent or harmful outcome increases the failure evidence through
 The updated simulator was run successfully and continued to generate 1,000
 incidents with the existing incident distribution and sequential incident IDs.
 
-### 6. Week 3 Status So Far
+### 6. Week 3 Status
 
-The outcome model and outcome-to-evidence update mechanism have been added.
-
-The remaining Week 3 implementation is the complete learning loop in which
-incidents pass through the gate, receive simulated outcomes, update evidence,
-and then influence subsequent gate decisions.
+The outcome model, outcome-to-evidence update mechanism, and complete learning
+loop have been implemented. The learning experiment demonstrates one action
+progressing to AUTO while a high-blast-radius action remains excluded.
 
 
+
+---
+
+## Current Evaluation Record
+
+### 1. Action Record and Configuration Rationale
+
+The simulator now defines an explicit `Action` data class containing the
+action type, reversibility, and blast radius. The YAML configuration remains the
+source of truth for those values, with a short rationale comment for each
+configured action.
+
+### 2. Decision Logging
+
+The benchmark records the fields required by the project guide for each
+simulated decision: timestamp, incident identifier and type, candidate action,
+machine class, reversibility, blast radius, evidence lower bound, decision,
+outcome, resolution status, and recovery time.
+
+### 3. Evidence Learning Experiment
+
+The learning experiment uses deterministic random seeds and evaluates a known
+incident/action pairing for two action types. Outcomes from supervised handling
+are fed back into the action-and-machine-class evidence store so that later gate
+decisions use accumulated observations.
+
+The generated chart is stored as:
+
+`results/auto_decision_progression.png`
+
+### 4. Benchmark
+
+The benchmark compares Always Ask, Always Act, and EarnedAutonomy using the
+four required metrics:
+
+- automatic resolution rate;
+- mean time to recovery;
+- human interruptions;
+- unsafe automatic executions.
+
+The benchmark uses a deterministic seed and writes seed-specific machine-readable
+results. The default seed is 42 and a second run uses seed 43 for sensitivity
+analysis.
+
+### 5. Threshold Sensitivity
+
+The threshold sweep evaluates the configured AUTO and PROPOSE threshold grids,
+excluding configurations where the PROPOSE threshold is greater than or equal to
+the AUTO threshold. The plotted relationship is automation rate versus unsafe
+automatic execution rate, as required by the project guide.
+
+### 6. Scientific Boundary
+
+The BGL dataset is used to inform incident-type frequency only. It does not
+provide remediation ground truth. The benchmark therefore uses an explicit
+simulated incident-to-action mapping and fixed action outcome probabilities.
+These assumptions are documented rather than presented as measurements from
+BGL or production infrastructure.
+
+### 7. Documentation and Paper Synchronization
+
+The README, benchmark outputs, threshold-sweep summaries, and technical paper
+must describe the current implementation and results. Stale statements about
+future benchmark implementation or unfinished outcome modelling are removed
+when the corresponding implementation is complete.
+
+### 8. Public Log Template Extraction
+
+The Project Guide requires an existing log-template extraction approach rather
+than a full custom log parser. The BGL analysis therefore adopts the published
+Drain approach (fixed-depth parse tree, token similarity, and wildcard template
+generalisation). A small deterministic in-repository implementation is used to
+keep the project CPU-only and reproducible without adding a parser service.
+The template miner is applied to a bounded sample of BGL messages, while the
+full dataset is still scanned for exact label frequencies.

@@ -3,15 +3,25 @@ import json
 import random
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Callable
+
+import yaml
 
 from src.baselines import always_act, always_ask
 from src.evidence import EvidenceStore
 from src.gate import TrustGate
-from src.simulator import INCIDENT_ACTIONS, OutcomeType, generate_incidents, generate_outcome, apply_outcome_to_evidence
+from src.simulator import (
+    INCIDENT_ACTIONS,
+    Action,
+    Outcome,
+    OutcomeType,
+    apply_outcome_to_evidence,
+    generate_incidents,
+    generate_outcome,
+)
 
 ROOT = Path(__file__).resolve().parent
 RESULTS_DIR = ROOT / "results"
+ACTIONS_CONFIG = ROOT / "config" / "actions.yaml"
 SEED = 42
 INCIDENT_COUNT = 1000
 HUMAN_APPROVAL_SECONDS = 120.0
@@ -23,15 +33,39 @@ ACTION_SECONDS = {
     "drain_node": 60.0,
     "reclaim_disk": 45.0,
 }
-POLICY_NAMES = ("always_ask", "always_act", "earnedauto")
+
+
+def _load_action_records():
+    with ACTIONS_CONFIG.open("r", encoding="utf-8") as file:
+        config = yaml.safe_load(file)
+    return {
+        action_type: Action(
+            action_type=action_type,
+            reversibility=float(values["reversibility"]),
+            blast_radius=float(values["blast_radius"]),
+        )
+        for action_type, values in config["actions"].items()
+    }
+
+
+ACTION_RECORDS = _load_action_records()
 
 
 @dataclass(frozen=True)
 class IncidentResult:
+    timestamp: str
     incident_id: str
+    incident_type: str
+    machine_class: str
     action_type: str
     decision: str
+    reversibility: float
+    blast_radius: float
+    evidence_lower_bound: float
+    trust: float
+    risk: float
     outcome: str | None
+    resolved: bool
     human_involved: bool
     recovery_seconds: float
     unsafe_automatic: bool
@@ -49,61 +83,80 @@ def run_policy(name: str, incidents, seed: int, gate_factory=None):
 
     for incident in incidents:
         action = candidate_action(incident)
+        action_record = ACTION_RECORDS[action]
 
         if name == "always_ask":
             policy = always_ask(candidate_action, incident)
             decision = policy.mode
             human_involved = True
+            evidence_lower_bound = evidence.get_lower_bound(
+                action, incident.machine_class
+            )
+            trust = action_record.reversibility * evidence_lower_bound
+            risk = action_record.blast_radius
         elif name == "always_act":
             policy = always_act(candidate_action, incident)
             decision = policy.mode
             human_involved = False
+            evidence_lower_bound = evidence.get_lower_bound(
+                action, incident.machine_class
+            )
+            trust = action_record.reversibility * evidence_lower_bound
+            risk = action_record.blast_radius
         elif name == "earnedauto":
             gate_result = gate.decide(action, incident.machine_class)
             decision = gate_result.decision
             human_involved = decision != "AUTO"
+            evidence_lower_bound = gate_result.evidence_lower_bound
+            trust = gate_result.trust
+            risk = gate_result.risk
         else:
             raise ValueError(f"Unknown policy: {name}")
 
-        executed = decision in {"AUTO", "HUMAN_APPROVAL", "PROPOSE", "ESCALATE"}
-        outcome = None
-        unsafe = False
+        outcome = generate_outcome(action, rng=rng).outcome_type
 
-        if executed:
-            outcome = generate_outcome(action, rng=rng).outcome_type
-            if name == "earnedauto":
-                apply_outcome_to_evidence(
-                    type("Outcome", (), {"outcome_type": outcome})(),
-                    action,
-                    incident.machine_class,
-                    evidence,
-                )
-            unsafe = decision == "AUTO" and outcome != OutcomeType.RESOLVED
-        else:
-            raise AssertionError("Unexpected non-executing decision")
+        if name == "earnedauto":
+            apply_outcome_to_evidence(
+                Outcome(outcome),
+                action,
+                incident.machine_class,
+                evidence,
+            )
+
+        unsafe = decision == "AUTO" and outcome != OutcomeType.RESOLVED
+        resolved = outcome == OutcomeType.RESOLVED
 
         recovery = ACTION_SECONDS[action]
-        if decision == "HUMAN_APPROVAL":
-            recovery += HUMAN_APPROVAL_SECONDS
-        elif decision == "PROPOSE":
+        if decision in {"HUMAN_APPROVAL", "PROPOSE"}:
             recovery += HUMAN_APPROVAL_SECONDS
         elif decision == "ESCALATE":
             recovery += HUMAN_RECOVERY_SECONDS
-        if outcome != OutcomeType.RESOLVED and executed:
+
+        if not resolved:
             recovery += HUMAN_RECOVERY_SECONDS
             human_involved = True
 
         results.append(
             IncidentResult(
+                timestamp=incident.timestamp,
                 incident_id=incident.incident_id,
+                incident_type=incident.incident_type,
+                machine_class=incident.machine_class,
                 action_type=action,
                 decision=decision,
+                reversibility=action_record.reversibility,
+                blast_radius=action_record.blast_radius,
+                evidence_lower_bound=evidence_lower_bound,
+                trust=trust,
+                risk=risk,
                 outcome=outcome,
+                resolved=resolved,
                 human_involved=human_involved,
                 recovery_seconds=recovery,
                 unsafe_automatic=unsafe,
             )
         )
+
     return results
 
 
@@ -111,12 +164,11 @@ def metrics(results):
     n = len(results)
     autonomous_executions = sum(r.decision == "AUTO" for r in results)
     automatic_resolutions = sum(
-        r.decision == "AUTO" and r.outcome == OutcomeType.RESOLVED
-        for r in results
+        r.decision == "AUTO" and r.resolved for r in results
     )
     human_interruptions = sum(r.human_involved for r in results)
     unsafe = sum(r.unsafe_automatic for r in results)
-    resolved = sum(r.outcome == OutcomeType.RESOLVED for r in results)
+    resolved = sum(r.resolved for r in results)
 
     return {
         "incident_count": n,
@@ -191,14 +243,24 @@ def serializable(incidents, results, metric_values, seed):
 
 def write_outputs(payload):
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    (RESULTS_DIR / "benchmark_results.json").write_text(
-        json.dumps(payload, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    seed = payload["metadata"]["seed"]
+    result_path = RESULTS_DIR / f"benchmark_results_seed{seed}.json"
+    summary_path = RESULTS_DIR / f"benchmark_summary_seed{seed}.md"
+
+    result_json = json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    result_path.write_text(result_json, encoding="utf-8")
+
+    # Preserve the single-command default output required by the guide.
+    if seed == SEED:
+        (RESULTS_DIR / "benchmark_results.json").write_text(
+            result_json,
+            encoding="utf-8",
+        )
+
     lines = [
-        "# Week 4 Benchmark Summary",
+        "# Benchmark Summary",
         "",
-        f"Seed: {payload['metadata']['seed']}",
+        f"Seed: {seed}",
         f"Incidents: {payload['metadata']['incident_count']}",
         "",
         "| Metric | Always ask | Always act | EarnedAutonomy |",
@@ -211,14 +273,20 @@ def write_outputs(payload):
         ("Unsafe automatic executions", "unsafe_automatic_executions"),
     ]
     for label, key in metric_rows:
-        values = [payload["metrics"][name][key] for name in ("always_ask", "always_act", "earnedauto")]
+        values = [
+            payload["metrics"][name][key]
+            for name in ("always_ask", "always_act", "earnedauto")
+        ]
         if key in {"human_interruptions", "unsafe_automatic_executions"}:
             formatted = [str(int(v)) for v in values]
         elif key == "mean_time_to_recovery_seconds":
-            formatted = [f"{v:.2f}" for v in values]
+            formatted = [f"{v:.3f}" for v in values]
         else:
             formatted = [f"{v:.4f}" for v in values]
-        lines.append(f"| {label} | {formatted[0]} | {formatted[1]} | {formatted[2]} |")
+        lines.append(
+            f"| {label} | {formatted[0]} | {formatted[1]} | {formatted[2]} |"
+        )
+
     lines.extend([
         "",
         "| Additional metric | Always ask | Always act | EarnedAutonomy |",
@@ -229,11 +297,20 @@ def write_outputs(payload):
         ("Unsafe automatic execution rate", "unsafe_automatic_execution_rate"),
         ("Remediation success rate", "remediation_success_rate"),
     ]:
-        values = [payload["metrics"][name][key] for name in ("always_ask", "always_act", "earnedauto")]
-        lines.append(f"| {label} | {values[0]:.4f} | {values[1]:.4f} | {values[2]:.4f} |")
-    (RESULTS_DIR / "benchmark_summary.md").write_text(
-        "\n".join(lines) + "\n", encoding="utf-8"
-    )
+        values = [
+            payload["metrics"][name][key]
+            for name in ("always_ask", "always_act", "earnedauto")
+        ]
+        lines.append(
+            f"| {label} | {values[0]:.4f} | {values[1]:.4f} | {values[2]:.4f} |"
+        )
+
+    summary_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    if seed == SEED:
+        (RESULTS_DIR / "benchmark_summary.md").write_text(
+            "\n".join(lines) + "\n",
+            encoding="utf-8",
+        )
 
 
 def main():
@@ -242,7 +319,10 @@ def main():
     parser.add_argument("--incidents", type=int, default=INCIDENT_COUNT)
     args = parser.parse_args()
 
-    incidents, results, metric_values = run_benchmark(args.seed, args.incidents)
+    incidents, results, metric_values = run_benchmark(
+        args.seed,
+        args.incidents,
+    )
     payload = serializable(incidents, results, metric_values, args.seed)
     write_outputs(payload)
 

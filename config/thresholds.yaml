@@ -1,13 +1,7 @@
 # Decision thresholds for the earnedauto trust gate.
-#
-# AUTO_THRESHOLD:
-# Minimum trust required before an action can be considered for automatic execution.
-#
-# PROPOSE_THRESHOLD:
-# Minimum trust required before an action can be proposed to a human.
-#
-# RISK_CEILING:
-# Maximum normalized blast radius allowed for an AUTO decision.
+# AUTO_THRESHOLD: minimum trust for automatic execution.
+# PROPOSE_THRESHOLD: minimum trust for proposing an action to a human.
+# RISK_CEILING: maximum normalized blast radius allowed for AUTO.
 
 AUTO_THRESHOLD: 0.65
 PROPOSE_THRESHOLD: 0.35

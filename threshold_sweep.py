@@ -15,7 +15,7 @@ from benchmark import (
 )
 from src.evidence import EvidenceStore
 from src.gate import TrustGate
-from src.simulator import generate_incidents
+from src.simulator import Outcome, OutcomeType, apply_outcome_to_evidence, generate_incidents, generate_outcome
 
 ROOT = Path(__file__).resolve().parent
 RESULTS_DIR = ROOT / "results"
@@ -53,48 +53,17 @@ def run_one(auto_threshold, propose_threshold, incidents, seed):
             gate_result = gate.decide(action, incident.machine_class)
             decision = gate_result.decision
 
-            # Reuse the benchmark's execution model through the same policy engine
-            # shape, but with the custom gate.
-            if decision == "AUTO":
-                outcome = __import__("src.simulator", fromlist=["generate_outcome"]).generate_outcome(
-                    action, rng=rng
-                ).outcome_type
-                from src.simulator import apply_outcome_to_evidence
-                apply_outcome_to_evidence(
-                    type("Outcome", (), {"outcome_type": outcome})(),
-                    action,
-                    incident.machine_class,
-                    evidence,
-                )
-                human = False
-            elif decision == "PROPOSE":
-                outcome = __import__("src.simulator", fromlist=["generate_outcome"]).generate_outcome(
-                    action, rng=rng
-                ).outcome_type
-                from src.simulator import apply_outcome_to_evidence
-                apply_outcome_to_evidence(
-                    type("Outcome", (), {"outcome_type": outcome})(),
-                    action,
-                    incident.machine_class,
-                    evidence,
-                )
-                human = True
-            else:
-                outcome = __import__("src.simulator", fromlist=["generate_outcome"]).generate_outcome(
-                    action, rng=rng
-                ).outcome_type
-                from src.simulator import apply_outcome_to_evidence
-                apply_outcome_to_evidence(
-                    type("Outcome", (), {"outcome_type": outcome})(),
-                    action,
-                    incident.machine_class,
-                    evidence,
-                )
-                human = True
+            # Reuse the benchmark execution model with the custom thresholds.
+            outcome = generate_outcome(action, rng=rng).outcome_type
+            apply_outcome_to_evidence(
+                Outcome(outcome),
+                action,
+                incident.machine_class,
+                evidence,
+            )
+            human = decision != "AUTO"
 
             from benchmark import ACTION_SECONDS, HUMAN_APPROVAL_SECONDS, HUMAN_RECOVERY_SECONDS
-            from src.simulator import OutcomeType
-
             recovery = ACTION_SECONDS[action]
             if decision == "PROPOSE":
                 recovery += HUMAN_APPROVAL_SECONDS
@@ -107,13 +76,24 @@ def run_one(auto_threshold, propose_threshold, incidents, seed):
             from benchmark import IncidentResult
             results.append(
                 IncidentResult(
-                    incident.incident_id,
-                    action,
-                    decision,
-                    outcome,
-                    human,
-                    recovery,
-                    decision == "AUTO" and outcome != OutcomeType.RESOLVED,
+                    timestamp=incident.timestamp,
+                    incident_id=incident.incident_id,
+                    incident_type=incident.incident_type,
+                    machine_class=incident.machine_class,
+                    action_type=action,
+                    decision=decision,
+                    reversibility=gate_result.reversibility,
+                    blast_radius=gate_result.blast_radius,
+                    evidence_lower_bound=gate_result.evidence_lower_bound,
+                    trust=gate_result.trust,
+                    risk=gate_result.risk,
+                    outcome=outcome,
+                    resolved=outcome == OutcomeType.RESOLVED,
+                    human_involved=human,
+                    recovery_seconds=recovery,
+                    unsafe_automatic=(
+                        decision == "AUTO" and outcome != OutcomeType.RESOLVED
+                    ),
                 )
             )
 
@@ -171,7 +151,7 @@ def main():
     plt.close()
 
     summary = [
-        "# Week 5 Threshold Sweep",
+        "# Threshold Sweep",
         "",
         f"Seed: {args.seed}",
         f"Incidents: {args.incidents}",
@@ -182,8 +162,8 @@ def main():
         "",
         "## Observations",
         "",
-        "- See `threshold_sweep.json` for the complete machine-readable experiment output.",
-        "- The chart plots automatic resolution rate against unsafe automatic execution rate.",
+        f"- See `threshold_sweep_seed{args.seed}.json` for the complete machine-readable experiment output.",
+        "- The chart plots automation rate against unsafe automatic execution rate.",
         "- No threshold configuration is selected as 'best' without considering the safety objective.",
     ]
     (RESULTS_DIR / f"threshold_sweep_summary_seed{args.seed}.md").write_text(

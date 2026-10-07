@@ -36,10 +36,28 @@ def test_unsafe_automatic_execution_metric():
     from benchmark import IncidentResult
 
     rows = [
-        IncidentResult("1", "restart_service", "AUTO", "harmful", True, 320.0, True),
-        IncidentResult("2", "restart_service", "AUTO", "resolved", False, 20.0, False),
+        IncidentResult("t", "1", "kernel_error", "compute_node", "restart_service", "AUTO", 0.9, 0.1, 0.05, 0.04, 0.1, "harmful", False, True, 320.0, True),
+        IncidentResult("t", "2", "kernel_error", "compute_node", "restart_service", "AUTO", 0.9, 0.1, 0.05, 0.04, 0.1, "resolved", True, False, 20.0, False),
     ]
     values = metrics(rows)
     assert values["automation_rate"] == 1.0
     assert values["unsafe_automatic_executions"] == 1
     assert values["unsafe_automatic_execution_rate"] == 0.5
+
+
+def test_decision_records_contain_required_audit_fields():
+    _, results, _ = run_benchmark(seed=42, incident_count=1)
+    record = results["earnedauto"][0]
+
+    assert record.timestamp
+    assert record.incident_id
+    assert record.incident_type
+    assert record.machine_class
+    assert record.action_type
+    assert 0.0 <= record.reversibility <= 1.0
+    assert 0.0 <= record.blast_radius <= 1.0
+    assert 0.0 <= record.evidence_lower_bound <= 1.0
+    assert record.decision in {"AUTO", "PROPOSE", "ESCALATE"}
+    assert record.outcome in {"resolved", "recurred", "harmful"}
+    assert isinstance(record.resolved, bool)
+    assert record.recovery_seconds >= 0.0

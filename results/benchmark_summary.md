@@ -1,17 +1,17 @@
-# Week 4 Benchmark Summary
+# Benchmark Summary
 
-Seed: 43
+Seed: 42
 Incidents: 1000
 
 | Metric | Always ask | Always act | EarnedAutonomy |
 |---|---:|---:|---:|
-| Automatic resolution rate | 0.0000 | 0.5380 | 0.0110 |
-| Mean time to recovery (s) | 288.30 | 168.30 | 442.32 |
-| Human interruptions | 1000 | 462 | 989 |
-| Unsafe automatic executions | 0 | 462 | 0 |
+| Automatic resolution rate | 0.0000 | 0.5280 | 0.0000 |
+| Mean time to recovery (s) | 291.685 | 171.685 | 443.905 |
+| Human interruptions | 1000 | 472 | 1000 |
+| Unsafe automatic executions | 0 | 472 | 2 |
 
 | Additional metric | Always ask | Always act | EarnedAutonomy |
 |---|---:|---:|---:|
-| Automation rate | 0.0000 | 1.0000 | 0.0110 |
-| Unsafe automatic execution rate | 0.0000 | 0.4620 | 0.0000 |
-| Remediation success rate | 0.5380 | 0.5380 | 0.5380 |
+| Automation rate | 0.0000 | 1.0000 | 0.0020 |
+| Unsafe automatic execution rate | 0.0000 | 0.4720 | 1.0000 |
+| Remediation success rate | 0.5280 | 0.5280 | 0.5280 |

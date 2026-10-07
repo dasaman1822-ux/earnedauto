@@ -1,30 +1,35 @@
 # Action configuration for earnedauto.
-# Reversibility: how easily an action can be undone.
-# Blast radius: how much of the system may be affected if the action is wrong.
-# Both values are normalized to the range 0.0 to 1.0.
+# Reversibility and blast radius are normalized to [0, 1].
+# The values below are explicit engineering judgements for the simulator.
 
 actions:
 
+  # Restarting a stateless service is easy to undo and is scoped to one service/job.
   restart_service:
     reversibility: 0.9
     blast_radius: 0.1
 
+  # Requeueing a failed job is reversible and affects one job rather than a node.
   requeue_job:
     reversibility: 0.9
     blast_radius: 0.1
 
+  # Resetting a device driver can affect one machine and may require more recovery work.
   reset_driver:
     reversibility: 0.6
     blast_radius: 0.3
 
+  # Draining a node affects all jobs on that node and therefore has a large blast radius.
   drain_node:
     reversibility: 0.5
     blast_radius: 0.7
 
+  # Deleting temporary files can be difficult to undo and can risk data loss.
   reclaim_disk:
     reversibility: 0.3
     blast_radius: 0.5
 
+  # Escalation performs no automated remediation and therefore has no remediation blast radius.
   escalate:
     reversibility: 1.0
     blast_radius: 0.0

@@ -1,4 +1,4 @@
-# Week 5 Threshold Sweep
+# Threshold Sweep
 
 Seed: 43
 Incidents: 1000
@@ -9,6 +9,6 @@ The sweep excludes configurations where PROPOSE_THRESHOLD >= AUTO_THRESHOLD.
 
 ## Observations
 
-- See `threshold_sweep.json` for the complete machine-readable experiment output.
-- The chart plots automatic resolution rate against unsafe automatic execution rate.
+- See `threshold_sweep_seed43.json` for the complete machine-readable experiment output.
+- The chart plots automation rate against unsafe automatic execution rate.
 - No threshold configuration is selected as 'best' without considering the safety objective.
