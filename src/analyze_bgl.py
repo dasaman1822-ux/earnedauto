@@ -15,7 +15,7 @@ def extract_message(line: str) -> str:
     try:
         ras_index = parts.index("RAS")
     except ValueError:
-        # Keep the analysis robust for unexpected/non-standard lines
+        # Keep the analysis robust for unexpected/non-standard lines.
         return " ".join(parts[1:])
     return " ".join(parts[ras_index:])
 
