@@ -6,8 +6,6 @@ from .evidence import EvidenceStore
 
 @dataclass(frozen=True)
 class Incident:
-    """A simulated infrastructure incident."""
-
     incident_id: str
     incident_type: str
     machine_class: str
@@ -16,8 +14,6 @@ class Incident:
 
 @dataclass(frozen=True)
 class Action:
-    """A remediation action and its two configured risk factors."""
-
     action_type: str
     reversibility: float
     blast_radius: float
@@ -31,9 +27,11 @@ class OutcomeType:
 
 @dataclass(frozen=True)
 class Outcome:
-    """Observed result of a simulated remediation."""
-
     outcome_type: str
+    action_type: str
+    incident_type: str
+    correct_action: str
+    action_was_correct: bool
 
 
 INCIDENT_TYPES = [
@@ -76,7 +74,6 @@ INCIDENT_ACTIONS = {
 
 
 def generate_incident(rng=None, incident_id="INC-000001"):
-    """Generate one incident using the configured incident distribution."""
     rng = rng or random
     return Incident(
         incident_id=incident_id,
@@ -91,8 +88,11 @@ def generate_incident(rng=None, incident_id="INC-000001"):
 
 
 def generate_incidents(count=1000, rng=None):
-    """Generate a deterministic-sized sequence of uniquely identified incidents."""
+    if count < 0:
+        raise ValueError("count must be non-negative")
+
     rng = rng or random
+
     return [
         generate_incident(
             rng=rng,
@@ -102,16 +102,51 @@ def generate_incidents(count=1000, rng=None):
     ]
 
 
-def generate_outcome(action_type, rng=None):
-    """Generate a remediation outcome using the fixed simulator probabilities."""
+def get_correct_action(incident_type):
+    return INCIDENT_ACTIONS[incident_type]
+
+
+def is_correct_action(incident_type, action_type):
+    return get_correct_action(incident_type) == action_type
+
+
+def generate_outcome(incident_type, action_type, rng=None):
     rng = rng or random
+
+    if incident_type not in INCIDENT_ACTIONS:
+        raise KeyError(
+            f"No ground-truth remediation configured for incident type: "
+            f"{incident_type}"
+        )
+
+    if action_type not in OUTCOME_PROBABILITIES:
+        raise KeyError(
+            f"No outcome probabilities configured for action type: "
+            f"{action_type}"
+        )
+
+    correct_action = get_correct_action(incident_type)
+    action_was_correct = action_type == correct_action
+
     probabilities = OUTCOME_PROBABILITIES[action_type]
+
     outcome_type = rng.choices(
-        [OutcomeType.RESOLVED, OutcomeType.RECURRED, OutcomeType.HARMFUL],
+        [
+            OutcomeType.RESOLVED,
+            OutcomeType.RECURRED,
+            OutcomeType.HARMFUL,
+        ],
         weights=probabilities,
         k=1,
     )[0]
-    return Outcome(outcome_type=outcome_type)
+
+    return Outcome(
+        outcome_type=outcome_type,
+        action_type=action_type,
+        incident_type=incident_type,
+        correct_action=correct_action,
+        action_was_correct=action_was_correct,
+    )
 
 
 def apply_outcome_to_evidence(
@@ -120,11 +155,20 @@ def apply_outcome_to_evidence(
     machine_class,
     evidence_store,
 ):
-    """Feed an observed remediation outcome back into Bayesian evidence."""
     if outcome.outcome_type == OutcomeType.RESOLVED:
-        evidence_store.record_success(action_type, machine_class)
+        evidence_store.record_success(
+            action_type,
+            machine_class,
+        )
     elif outcome.outcome_type in (
         OutcomeType.RECURRED,
         OutcomeType.HARMFUL,
     ):
-        evidence_store.record_failure(action_type, machine_class)
+        evidence_store.record_failure(
+            action_type,
+            machine_class,
+        )
+    else:
+        raise ValueError(
+            f"Unknown outcome type: {outcome.outcome_type}"
+        )
